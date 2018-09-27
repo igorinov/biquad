@@ -1,3 +1,9 @@
+/*
+ *  Copyright (C) Ivan Gorinov, 2018
+ *
+ *  SPDX-License-Identifier: BSD-2-Clause
+ */
+
 #include <math.h>
 #include <stdlib.h>
 
