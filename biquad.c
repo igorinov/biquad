@@ -19,6 +19,9 @@ typedef struct {
     double im;
 } complex_d;
 
+static void biquad_init_band(struct iir_filter *filter, double fs,
+    double f1, double f2, int stop);
+
 iir_filter_t *biquad_create(int sections)
 {
     iir_filter_t *filter;
@@ -147,6 +150,18 @@ void biquad_init_highpass(struct iir_filter *filter, double fs, double f) {
         filter->d[i] = 0;
 }
 
+void biquad_init_bandpass(struct iir_filter *filter, double fs,
+    double f1, double f2)
+{
+	return biquad_init_band(filter, fs, f1, f2, 0);
+}
+
+void biquad_init_bandstop(struct iir_filter *filter, double fs,
+    double f1, double f2)
+{
+	return biquad_init_band(filter, fs, f1, f2, 1);
+}
+
 static void complex_square(complex_d *s)
 {
     double x, y;
@@ -220,11 +235,16 @@ static void complex_div(complex_d *p, complex_d *q)
     complex_mul(p, &b);
 }
 
-void biquad_init_bandpass(struct iir_filter *filter, double fs, double f1, double f2)
+/*
+ *  Compute bandpass or bandstop filter parameters
+ */
+
+static void biquad_init_band(struct iir_filter *filter, double fs,
+    double f1, double f2, int stop)
 {
     double ts = 1.0 / fs;
     double bw, f;
-    double w = 2 * M_PI * f / fs;
+    double w;
     complex_d p, q;
     double phi;
     complex_d z, p_lp, p_bp;
@@ -233,6 +253,9 @@ void biquad_init_bandpass(struct iir_filter *filter, double fs, double f1, doubl
     double *a = filter->a;
     double *b = filter->b;
     int n, i;
+
+    f = sqrt(f1 * f2);
+    w = 2 * M_PI * f / fs;
 
     /* Map to continuous-time frequencies (pre-warp) */
 
@@ -252,7 +275,10 @@ void biquad_init_bandpass(struct iir_filter *filter, double fs, double f1, doubl
         p_lp.re = x * bw / (wa * 2);
         p_lp.im = y * bw / (wa * 2);
 
-        /* Map every low-pass pole to a pair of band-bass poles */
+        /*
+         *  Map every low-pass pole to a complex conjugate
+         *  pair of band-bass poles
+         */
 
         p_bp = p_lp;
         complex_square(&p_bp);
@@ -264,7 +290,10 @@ void biquad_init_bandpass(struct iir_filter *filter, double fs, double f1, doubl
         x *= M_PI * f * ts;
         y *= M_PI * f * ts;
 
-        /* Bilinear transform */
+        /*
+         *  Convert every pair from continuous (s)
+         *  to discrete (z) using bilinear transform
+         */
 
         p.re = 1.0 + x;
         p.im = y;
@@ -274,17 +303,40 @@ void biquad_init_bandpass(struct iir_filter *filter, double fs, double f1, doubl
         x = p.re;
         y = p.im;
 
-        b[0] = 1;
-        b[1] = 0;
-        b[2] = -1;
+        /*
+         *  Find denominator coefficients from
+         *  the complex conjugate pair of poles
+         */
+
         a[0] = 1;
         a[1] = -2 * x;
         a[2] = x * x + y * y;
 
+        if (stop) {
+            /* Band-stop: zero at ω */
+            x = cos(w);
+            y = sin(w);
+            b[0] = 1;
+            b[1] = -2 * x;
+            b[2] = x * x + y * y;
+        } else {
+            /* Band-pass: zeros at ±1 */
+            b[0] = 1;
+            b[1] = 0;
+            b[2] = -1;
+        }
+
         /* Scale the parameters to get unity gain in the bassband */
 
-        z.re = cos(w);
-        z.im = sin(w);
+        if (stop) {
+            /* Band-stop: unity gain at zero frequency */
+            z.re = 1;
+            z.im = 0;
+        } else {
+            /* Band-pass: unity gain at ω */
+            z.re = cos(w);
+            z.im = sin(w);
+        }
 
         p.re = b[2];
         p.im = 0;
