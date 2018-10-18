@@ -19,6 +19,9 @@ typedef struct {
     double im;
 } complex_d;
 
+static void complex_mul(complex_d *a, complex_d *b);
+static void complex_div(complex_d *p, complex_d *q);
+
 static void biquad_init_band(struct iir_filter *filter, double fs,
     double f1, double f2, int stop);
 
@@ -247,7 +250,7 @@ static void biquad_init_band(struct iir_filter *filter, double fs,
     double w;
     complex_d p, q;
     double phi;
-    complex_d z, p_lp, p_bp;
+    complex_d _z, p_lp, p_bp;
     double k, x, y;
     double wa1, wa2, wa;
     double *a = filter->a;
@@ -330,26 +333,26 @@ static void biquad_init_band(struct iir_filter *filter, double fs,
 
         if (stop) {
             /* Band-stop: unity gain at zero frequency */
-            z.re = 1;
-            z.im = 0;
+            _z.re = 1;
+            _z.im = 0;
         } else {
             /* Band-pass: unity gain at ω */
-            z.re = cos(w);
-            z.im = sin(w);
+            _z.re = cos(w);
+            _z.im = -sin(w);
         }
 
         p.re = b[2];
         p.im = 0;
-        complex_div(&p, &z);
+        complex_mul(&p, &_z);
         p.re += b[1];
-        complex_div(&p, &z);
+        complex_mul(&p, &_z);
         p.re += b[0];
 
         q.re = a[2];
         q.im = 0;
-        complex_div(&q, &z);
+        complex_mul(&q, &_z);
         q.re += a[1];
-        complex_div(&q, &z);
+        complex_mul(&q, &_z);
         q.re += 1;
 
         complex_div(&p, &q);
