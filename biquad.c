@@ -290,8 +290,8 @@ static void biquad_init_band(struct iir_filter *filter, double fs,
         complex_sqrt(&p_bp);
         x = p_lp.re - p_bp.im;
         y = p_lp.im + p_bp.re;
-        x *= M_PI * f * ts;
-        y *= M_PI * f * ts;
+        x *= wa * ts / 2;
+        y *= wa * ts / 2;
 
         /*
          *  Convert every pair from continuous (s)
