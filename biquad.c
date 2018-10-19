@@ -22,7 +22,7 @@ typedef struct {
 static void complex_mul(complex_d *a, complex_d *b);
 static void complex_div(complex_d *p, complex_d *q);
 
-static void biquad_init_band(struct iir_filter *filter, double fs,
+static void biquad_init_band(iir_filter_t *filter, double fs,
     double f1, double f2, int stop);
 
 iir_filter_t *biquad_create(int sections)
@@ -70,6 +70,52 @@ void biquad_delete(iir_filter_t *filter)
     }
 
     free(filter);
+}
+
+void iir_freq_resp(iir_filter_t *filter, double *h, double fs, double f)
+{
+    double *a = filter->a;
+    double *b = filter->b;
+    double w = 2 * M_PI * f / fs;
+    complex_d _z, m, p, q;
+    int i, k;
+
+    /* On unit circle, 1/z = ~z (complex conjugate) */
+
+    _z.re = cos(w);
+    _z.im = -sin(w);
+
+    m.re = 1;
+    m.im = 0;
+
+    for (i = 0; i < filter->sections; i += 1)
+    {
+        k = filter->sect_ord;
+        p.re = b[k];
+        p.im = 0;
+        while (k > 0) {
+            k -= 1;
+            complex_mul(&p, &_z);
+            p.re += b[k];
+        }
+
+        k = filter->sect_ord;
+        q.re = a[k];
+        q.im = 0;
+        while (k > 0) {
+            k -= 1;
+            complex_mul(&q, &_z);
+            q.re += a[k];
+        }
+
+        complex_div(&p, &q);
+        complex_mul(&m, &p);
+        a += filter->sect_ord + 1;
+        b += filter->sect_ord + 1;
+    }
+
+    h[0] = m.re;
+    h[1] = m.im;
 }
 
 double biquad_update(struct iir_filter *filter, double x)
@@ -239,6 +285,28 @@ static void complex_div(complex_d *p, complex_d *q)
 }
 
 /*
+ *  Convert from continuous (s) to discrete (z)
+ *  using bilinear transform
+ *  ts: sample period (T)
+ */
+
+static void bilinear_transform(complex_d *z, complex_d *s, double ts)
+{
+    complex_d p, q;
+    double x = s->re;
+    double y = s->im;
+
+    x *= ts / 2;
+    y *= ts / 2;
+    p.re = 1.0 + x;
+    p.im = y;
+    q.re = 1.0 - x;
+    q.im = -y;
+    complex_div(&p, &q);
+    *z = p;
+}
+
+/*
  *  Compute bandpass or bandstop filter parameters
  */
 
@@ -249,6 +317,7 @@ static void biquad_init_band(struct iir_filter *filter, double fs,
     double bw, f;
     double w;
     complex_d p, q;
+    complex_d z, s;
     double phi;
     complex_d _z, p_lp, p_bp;
     double k, x, y;
@@ -283,28 +352,25 @@ static void biquad_init_band(struct iir_filter *filter, double fs,
          *  pair of band-bass poles
          */
 
-        p_bp = p_lp;
-        complex_square(&p_bp);
-        p_bp.re = 1 - p_bp.re;
-        p_bp.im = 0 - p_bp.im;
-        complex_sqrt(&p_bp);
-        x = p_lp.re - p_bp.im;
-        y = p_lp.im + p_bp.re;
-        x *= wa * ts / 2;
-        y *= wa * ts / 2;
+        s = p_lp;
+        complex_square(&s);
+        s.re = 1 - s.re;
+        s.im = 0 - s.im;
+        complex_sqrt(&s);
+        x = p_lp.re - s.im;
+        y = p_lp.im + s.re;
+        p_bp.re = x * wa;
+        p_bp.im = y * wa;
 
         /*
          *  Convert every pair from continuous (s)
          *  to discrete (z) using bilinear transform
          */
 
-        p.re = 1.0 + x;
-        p.im = y;
-        q.re = 1.0 - x;
-        q.im = -y;
-        complex_div(&p, &q);
-        x = p.re;
-        y = p.im;
+        bilinear_transform(&z, &p_bp, ts);
+
+        x = z.re;
+        y = z.im;
 
         /*
          *  Find denominator coefficients from
@@ -316,9 +382,13 @@ static void biquad_init_band(struct iir_filter *filter, double fs,
         a[2] = x * x + y * y;
 
         if (stop) {
-            /* Band-stop: zero at ω */
-            x = cos(w);
-            y = sin(w);
+            /* Band-stop: zeros at ω and ~ω */
+            s.re = 0;
+            s.im = wa;
+            bilinear_transform(&z, &s, ts);
+            x = z.re;
+            y = z.im;
+
             b[0] = 1;
             b[1] = -2 * x;
             b[2] = x * x + y * y;
