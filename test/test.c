@@ -11,19 +11,36 @@ static inline double _power(double x, double y)
 
 double eps = 0.000000001;
 
-int check_response(iir_filter_t *filter, double fs, double *f, double *p, int n)
+/* maximum allowed filter gain: 1 + eps1 */
+double eps1 = 0.000000000001;
+
+int check_response(iir_filter_t *filter, double fs, double *ft, double *p, int n)
 {
     double h[2];
-    double x;
+    double f, x, df;
     int i;
     int errors = 0;
+    int m = 4096;
 
     for (i = 0; i < n; i += 1) {
-        iir_freq_resp(filter, h, fs, f[i]);
+        f = ft[i];
+        iir_freq_resp(filter, h, fs, f);
         x = _power(h[0], h[1]);
         if (fabs(x - p[i]) > eps) {
-            printf("    H(%.3lf) = %.9lf, expected %.9lf\n", f[i], x, p[i]);
+            printf("    H(%.3lf) = %.9lf, expected %.9lf\n", f, x, p[i]);
             errors += 1;
+        }
+    }
+
+    df = fs / (2.0 * m);
+    for (i = 0; i < m; i += 1) {
+        f = i * df;
+        iir_freq_resp(filter, h, fs, f);
+        x = _power(h[0], h[1]);
+        if (x - 1 > eps1) {
+            printf("    H(%.3lf) = %.9lf > 1\n", f, x);
+            errors += 1;
+            break;
         }
     }
 
