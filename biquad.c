@@ -144,7 +144,26 @@ double biquad_update(struct iir_filter *filter, double x)
     return x;
 }
 
-void biquad_init_lowpass(struct iir_filter *filter, double fs, double f) {
+void biquad_zero(struct iir_filter *filter)
+{
+    double *a = filter->a;
+    double *b = filter->b;
+    int n;
+    int i;
+
+    n = filter->sections;
+    for (i = 0; i < n; i += 1) {
+        b[0] = 0;
+        b[1] = 0;
+        b[2] = 0;
+        a[0] = 0;
+        a[1] = 0;
+        a[2] = 0;
+    }
+}
+
+void biquad_init_lowpass(struct iir_filter *filter, double fs, double f)
+{
     double *a = filter->a;
     double *b = filter->b;
     double w = 2 * M_PI * f / fs;
